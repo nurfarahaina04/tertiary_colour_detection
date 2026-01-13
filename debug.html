@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Color Detector - FULL DIAGNOSTIC</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial; padding: 30px; background: #f5f5f5; }
+        .container { max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); }
+        h1 { color: #333; margin-bottom: 20px; border-bottom: 3px solid #667eea; padding-bottom: 10px; }
+        h2 { color: #444; margin: 25px 0 15px 0; padding-left: 10px; border-left: 5px solid #764ba2; }
+        .section { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 25px; border: 1px solid #ddd; }
+        .btn { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 12px 25px; border-radius: 6px; cursor: pointer; font-size: 16px; margin: 10px 5px; transition: 0.3s; }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4); }
+        .btn:disabled { background: #ccc; cursor: not-allowed; transform: none; box-shadow: none; }
+        .status { padding: 15px; border-radius: 6px; margin: 15px 0; font-weight: 500; }
+        .good { background: #d4edda; color: #155724; border-left: 5px solid #28a745; }
+        .bad { background: #f8d7da; color: #721c24; border-left: 5px solid #dc3545; }
+        .warning { background: #fff3cd; color: #856404; border-left: 5px solid #ffc107; }
+        .info { background: #d1ecf1; color: #0c5460; border-left: 5px solid #17a2b8; }
+        .result-box { background: white; border: 2px solid #e9ecef; border-radius: 8px; padding: 20px; margin-top: 15px; font-family: monospace; white-space: pre-wrap; }
+        canvas { border: 2px solid #667eea; border-radius: 8px; margin: 15px 0; display: block; background: white; }
+        .color-swatch { width: 50px; height: 50px; border-radius: 6px; display: inline-block; margin: 0 10px 10px 0; vertical-align: middle; box-shadow: 0 3px 10px rgba(0,0,0,0.2); }
+        .step { margin-bottom: 25px; }
+        .step-number { display: inline-block; width: 30px; height: 30px; background: #667eea; color: white; border-radius: 50%; text-align: center; line-height: 30px; margin-right: 10px; font-weight: bold; }
+    </style>
+    
+    <!-- Load TensorFlow.js and Teachable Machine -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 Color Detector Diagnostic Tool</h1>
+        <p>This tool will find exactly why your GitHub site shows wrong answers.</p>
+        
+        <!-- STEP 1: Model Configuration -->
+        <div class="step">
+            <h2><span class="step-number">1</span> Model Configuration</h2>
+            <div class="section">
+                <p><strong>Current Model URL:</strong></p>
+                <div class="result-box" id="model-url">Loading...</div>
+                <button class="btn" onclick="checkModelURLs()">Test Model Connection</button>
+                <div class="status" id="url-status">Click button to test</div>
+            </div>
+        </div>
+        
+        <!-- STEP 2: Load Model -->
+        <div class="step">
+            <h2><span class="step-number">2</span> Load Model</h2>
+            <div class="section">
+                <button class="btn" onclick="loadModel()" id="load-btn">Load Color Detection Model</button>
+                <div class="status" id="load-status">Model not loaded</div>
+                
+                <div id="model-info" style="display:none;">
+                    <p><strong>✅ Model Loaded Successfully!</strong></p>
+                    <p>Classes detected in model:</p>
+                    <div id="class-list"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- STEP 3: Test Image -->
+        <div class="step">
+            <h2><span class="step-number">3</span> Test with Simple Image</h2>
+            <div class="section">
+                <p>Create a simple magenta test image:</p>
+                <button class="btn" onclick="createTestImage()">Generate Test Image</button>
+                
+                <div style="text-align:center; margin:20px 0;">
+                    <canvas id="test-canvas" width="300" height="300"></canvas>
+                </div>
+                
+                <button class="btn" onclick="testDetection()" id="test-btn" disabled>Test Detection</button>
+                <div class="status" id="test-status">Generate test image first</div>
+                
+                <div id="test-results" style="display:none;">
+                    <p><strong>Prediction Results:</strong></p>
+                    <div class="result-box" id="prediction-results"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- STEP 4: Compare with Teachable Machine -->
+        <div class="step">
+            <h2><span class="step-number">4</span> Diagnostic Summary</h2>
+            <div class="section">
+                <div class="status info" id="summary">
+                    Run all tests above to see diagnostic summary
+                </div>
+                <button class="btn" onclick="runAllTests()" style="background:linear-gradient(135deg, #34d399 0%, #059669 100%);">Run All Tests Automatically</button>
+            </div>
+        </div>
+        
+        <!-- LOG OUTPUT -->
+        <div class="step">
+            <h2>📋 Detailed Log</h2>
+            <div class="section">
+                <div class="result-box" id="log-output" style="max-height: 300px; overflow-y: auto;">
+                    Diagnostic log will appear here...
+                </div>
+                <button class="btn" onclick="clearLog()" style="background:#6c757d; margin-top:10px;">Clear Log</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ========== CONFIGURATION ==========
+    // CHANGE THIS TO YOUR ACTUAL MODEL URL
+    const MODEL_URL = "https://teachablemachine.withgoogle.com/models/s3bH1Z_Zh/";
+    
+    // Global variables
+    let model = null;
+    let testImage = null;
+    const logOutput = document.getElementById('log-output');
+    
+    // ========== UTILITY FUNCTIONS ==========
+    function log(message, type = 'info') {
+        const timestamp = new Date().toLocaleTimeString();
+        const logEntry = `[${timestamp}] ${message}\n`;
+        logOutput.textContent += logEntry;
+        logOutput.scrollTop = logOutput.scrollHeight;
+        console.log(message);
+    }
+    
+    function clearLog() {
+        logOutput.textContent = 'Log cleared.\n';
+    }
+    
+    // ========== STEP 1: CHECK MODEL URL ==========
+    async function checkModelURLs() {
+        const status = document.getElementById('url-status');
+        const urlDisplay = document.getElementById('model-url');
+        urlDisplay.textContent = MODEL_URL;
+        
+        log('=== Testing Model URLs ===');
+        status.className = 'status warning';
+        status.textContent = 'Testing connection...';
+        
+        try {
+            // Test model.json
+            log(`Testing: ${MODEL_URL}model.json`);
+            const modelResponse = await fetch(MODEL_URL + 'model.json');
+            log(`✓ model.json status: ${modelResponse.status}`);
+            
+            // Test metadata.json
+            log(`Testing: ${MODEL_URL}metadata.json`);
+            const metaResponse = await fetch(MODEL_URL + 'metadata.json');
+            log(`✓ metadata.json status: ${metaResponse.status}`);
+            
+            if (modelResponse.ok && metaResponse.ok) {
+                status.className = 'status good';
+                status.textContent = '✅ Model URLs are accessible!';
+                log('✓ All model files accessible');
+            } else {
+                status.className = 'status bad';
+                status.textContent = '❌ Model files not found or inaccessible';
+                log('✗ One or more model files inaccessible');
+            }
+        } catch (error) {
+            status.className = 'status bad';
+            status.textContent = `❌ Error: ${error.message}`;
+            log(`✗ Connection error: ${error.message}`);
+        }
+    }
+    
+    // ========== STEP 2: LOAD MODEL ==========
+    async function loadModel() {
+        const status = document.getElementById('load-status');
+        const loadBtn = document.getElementById('load-btn');
+        
+        log('=== Loading Model ===');
+        status.className = 'status warning';
+        status.textContent = 'Loading model...';
+        loadBtn.disabled = true;
+        
+        try {
+            model = await tmImage.load(MODEL_URL + 'model.json', MODEL_URL + 'metadata.json');
+            
+            status.className = 'status good';
+            status.textContent = '✅ Model loaded successfully!';
+            log('✓ Model loaded');
+            
+            // Show model info
+            document.getElementById('model-info').style.display = 'block';
+            
+            // Get and display classes
+            const classes = model.getClassLabels();
+            const classList = document.getElementById('class-list');
+            classList.innerHTML = '';
+            
+            log(`Model has ${classes.length} classes:`);
+            classes.forEach((className, index) => {
+                log(`  ${index}: ${className}`);
+                
+                // Create color swatches based on class name
+                let color = '#cccccc';
+                if (className.toLowerCase().includes('vermilion')) color = '#E34234';
+                if (className.toLowerCase().includes('amber')) color = '#FFBF00';
+                if (className.toLowerCase().includes('chartreuse')) color = '#7FFF00';
+                if (className.toLowerCase().includes('teal')) color = '#008080';
+                if (className.toLowerCase().includes('violet')) color = '#8F00FF';
+                if (className.toLowerCase().includes('magenta')) color = '#FF00FF';
+                
+                const swatch = document.createElement('div');
+                swatch.className = 'color-swatch';
+                swatch.style.background = color;
+                swatch.title = className;
+                classList.appendChild(swatch);
+                
+                const label = document.createElement('span');
+                label.textContent = `${index}: ${className}`;
+                label.style.marginRight = '20px';
+                label.style.verticalAlign = 'middle';
+                classList.appendChild(label);
+                classList.appendChild(document.createElement('br'));
+            });
+            
+            // Enable test button
+            document.getElementById('test-btn').disabled = false;
+            
+        } catch (error) {
+            status.className = 'status bad';
+            status.textContent = `❌ Error loading model: ${error.message}`;
+            log(`✗ Model load error: ${error.message}`);
+            loadBtn.disabled = false;
+        }
+    }
+    
+    // ========== STEP 3: CREATE TEST IMAGE ==========
+    function createTestImage() {
+        log('=== Creating Test Image ===');
+        const canvas = document.getElementById('test-canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Create a simple magenta square (RGB: 255, 0, 255)
+        ctx.fillStyle = 'rgb(255, 0, 255)'; // Pure magenta
+        ctx.fillRect(0, 0, 300, 300);
+        
+        // Add a small label
+        ctx.fillStyle = 'white';
+        ctx.font = '20px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('TEST: Magenta', 150, 150);
+        
+        // Store as image
+        testImage = new Image();
+        testImage.src = canvas.toDataURL();
+        
+        document.getElementById('test-status').className = 'status info';
+        document.getElementById('test-status').textContent = '✅ Test image created (Pure Magenta)';
+        log('✓ Created magenta test image (RGB: 255, 0, 255)');
+        
+        // Show test results section
+        document.getElementById('test-results').style.display = 'block';
+    }
+    
+    // ========== STEP 3: TEST DETECTION ==========
+    async function testDetection() {
+        if (!model) {
+            alert('Please load the model first!');
+            return;
+        }
+        
+        if (!testImage) {
+            alert('Please create a test image first!');
+            return;
+        }
+        
+        const status = document.getElementById('test-status');
+        const results = document.getElementById('prediction-results');
+        
+        log('=== Testing Detection ===');
+        status.className = 'status warning';
+        status.textContent = 'Running detection...';
+        
+        try {
+            // Wait for image to load
+            await new Promise((resolve) => {
+                if (testImage.complete) resolve();
+                else testImage.onload = resolve;
+            });
+            
+            // Run prediction
+            const predictions = await model.predict(testImage);
+            
+            // Sort by probability
+            predictions.sort((a, b) => b.probability - a.probability);
+            
+            // Display results
+            let html = '';
+            predictions.forEach((pred, i) => {
+                const percent = (pred.probability * 100).toFixed(2);
+                log(`${i+1}. ${pred.className}: ${percent}%`);
+                
+                html += `<div style="margin: 10px 0; padding: 10px; background: ${i === 0 ? '#d4edda' : '#f8f9fa'}; border-radius: 5px;">
+                    <strong>${pred.className}</strong>: ${percent}%
+                    <div style="width: 100%; height: 20px; background: #e9ecef; border-radius: 10px; margin-top: 5px;">
+                        <div style="width: ${percent}%; height: 100%; background: ${i === 0 ? '#28a745' : '#6c757d'}; border-radius: 10px;"></div>
+                    </div>
+                </div>`;
+            });
+            
+            results.innerHTML = html;
+            
+            // Check if prediction is correct
+            const topPrediction = predictions[0].className.toLowerCase();
+            const isMagenta = topPrediction.includes('magenta');
+            
+            if (isMagenta) {
+                status.className = 'status good';
+                status.textContent = '✅ CORRECT! Model identifies image as Magenta';
+                log('✓ Model correctly identified magenta');
+            } else {
+                status.className = 'status bad';
+                status.textContent = `❌ WRONG! Model thinks it's ${predictions[0].className}`;
+                log(`✗ Model incorrectly identified as ${predictions[0].className}`);
+            }
+            
+        } catch (error) {
+            status.className = 'status bad';
+            status.textContent = `❌ Detection error: ${error.message}`;
+            log(`✗ Detection error: ${error.message}`);
+        }
+    }
+    
+    // ========== STEP 4: RUN ALL TESTS ==========
+    async function runAllTests() {
+        log('=== Running All Diagnostic Tests ===');
+        
+        // Run tests in sequence
+        await checkModelURLs();
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+        
+        await loadModel();
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+        
+        createTestImage();
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+        
+        if (model && testImage) {
+            await testDetection();
+        }
+        
+        // Update summary
+        const summary = document.getElementById('summary');
+        summary.className = 'status info';
+        summary.innerHTML = `
+            <strong>Diagnostic Complete!</strong><br>
+            Check the log above for detailed results.<br>
+            <br>
+            <strong>Most Common Issues:</strong>
+            <ul style="margin: 10px 0; padding-left: 20px;">
+                <li>Wrong MODEL_URL in script.js</li>
+                <li>Different model than expected</li>
+                <li>Image preprocessing mismatch</li>
+                <li>Cached files on GitHub Pages</li>
+            </ul>
+        `;
+    }
+    
+    // ========== INITIALIZE ==========
+    window.onload = function() {
+        log('Diagnostic tool loaded');
+        document.getElementById('model-url').textContent = MODEL_URL;
+        
+        // Auto-run URL test on load
+        setTimeout(checkModelURLs, 500);
+    };
+    </script>
+</body>
+</html>
